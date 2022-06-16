@@ -2,6 +2,11 @@ const asyncHandler = require("express-async-handler");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
+const {
+  validator,
+  authSchema,
+  registerUserSchema,
+} = require("../helpers/validate_schema");
 
 let refreshTokens = [];
 
@@ -11,6 +16,9 @@ const sendOtp = asyncHandler(async (req, res) => {
   const client = require("twilio")(accountSid, authToken);
   const smsKey = process.env.SMS_SECRET_KEY;
   const { name, phone, email, pic, isLogin } = req.body;
+
+  if (!isLogin) validator(registerUserSchema, req, res);
+  else validator(authSchema, req, res);
 
   if (isLogin) {
     // login
@@ -32,11 +40,11 @@ const sendOtp = asyncHandler(async (req, res) => {
   if (userExists && !isLogin) {
     return res
       .status(400)
-      .send({ msg: "User Already Exists!!", success: false });
+      .send({ data: "User Already Exists!!", success: false });
   } else if (!userExists && isLogin) {
     return res
       .status(404)
-      .send({ msg: "User doesn't exists!!", success: false });
+      .send({ data: "User doesn't exists!!", success: false });
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000);
@@ -68,7 +76,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
   let now = Date.now();
 
   if (now > parseInt(expires)) {
-    return res.status(504).send({ msg: `Timeout!! Pls Try again..` });
+    return res.status(504).send({ data: `Timeout!! Pls Try again..` });
   }
 
   const data = `${phone}.${otp}.${expires}`;
@@ -79,7 +87,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
 
   if (newCalculateHash === hashValue) {
     const accessToken = jwt.sign({ data: phone }, JWT_AUTH_TOKEN, {
-      expiresIn: "1d",
+      expiresIn: "120s",
     });
     const refreshToken = jwt.sign({ data: phone }, JWT_REFRESH_TOKEN, {
       expiresIn: "1y",
@@ -87,7 +95,8 @@ const verifyOtp = asyncHandler(async (req, res) => {
     refreshTokens.push(refreshToken);
 
     let user = "";
-    if (!isLogin) {
+    if (isLogin === "false") {
+      // console.log("Creating User..");
       user = await User.create({ name, phone, email });
     } else {
       user = await User.findOne({ phone });
@@ -99,23 +108,24 @@ const verifyOtp = asyncHandler(async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        msg: `Device Verified!!`,
+        pic: user.pic,
+        data: `Device Verified!!`,
         accessToken: accessToken,
         refreshToken: refreshToken,
         authSession: true,
         refreshTokenID: true,
-        accessExpiry: new Date().getTime() + 86400000,
+        accessExpiry: new Date().getTime() + 29999, // 86400000
         refreshExpiry: new Date().getTime() + 3557600000,
       });
     } else {
       res
         .status(400)
-        .send({ verification: false, msg: "Failed to Create the User!!" });
+        .send({ verification: false, data: "Failed to Create the User!!" });
     }
   } else {
     return res
       .status(400)
-      .send({ verification: false, msg: "Incorrect OTP!!" });
+      .send({ verification: false, data: "Incorrect OTP!!" });
   }
 });
 
@@ -130,19 +140,20 @@ const refresh = (req, res) => {
   if (refreshToken === "undefined") {
     return res
       .status(403)
-      .send({ msg: `Refresh Token not found, Please Login again..` });
+      .send({ data: `Refresh Token not found, Please Login again..` });
   }
 
   if (!refreshTokens.includes(refreshToken))
     return res.status(403).send({
-      msg: `Refresh Token blocked, Please Login again..`,
+      data: `Refresh Token blocked, Please Login again..`,
       refreshToken: refreshToken,
     });
 
   jwt.verify(refreshToken, JWT_REFRESH_TOKEN, async (err, phone) => {
     if (!err) {
-      const accessToken = jwt.sign({ data: phone }, JWT_AUTH_TOKEN, {
-        expiresIn: "1d",
+      // console.log(phone);
+      const accessToken = jwt.sign({ data: phone.data }, JWT_AUTH_TOKEN, {
+        expiresIn: "30s",
       });
 
       res.status(202).send({
@@ -152,12 +163,12 @@ const refresh = (req, res) => {
         authSession: true,
         refreshToken: refreshToken,
         refreshTokenID: true,
-        accessExpiry: new Date().getTime() + 86400000,
+        accessExpiry: new Date().getTime() + 29999, // 86400000
       });
     } else {
       return res
         .status(403)
-        .send({ success: false, msg: `Invalid Refresh Token!!` });
+        .send({ success: false, data: `Invalid Refresh Token!!` });
     }
   });
 };

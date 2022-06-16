@@ -19,7 +19,7 @@ const authenticateUser = asyncHandler(async (req, res, next) => {
         const accessToken = bearerToken[1];
 
         if (!accessToken) {
-          return res.status(401).send({ msg: `Not Authorized, No token!!` });
+          return res.status(401).send({ data: `Not Authorized, No token!!` });
         }
 
         jwt.verify(
@@ -27,15 +27,15 @@ const authenticateUser = asyncHandler(async (req, res, next) => {
           process.env.JWT_AUTH_TOKEN,
           async (err, phone) => {
             if (phone) {
-              req.phone = phone;
+              req.phone = phone.data;
               next();
             } else if (err.name === "TokenExpiredError") {
               return res
                 .status(403)
-                .send({ success: false, msg: `Access Token Expired!!` });
+                .send({ success: false, data: `Access Token Expired!!` });
             } else {
               console.error(err);
-              res.status(403).send({ err, msg: `User not Authenticated!!` });
+              res.status(403).send({ err, data: `User not Authenticated!!` });
             }
           }
         );
