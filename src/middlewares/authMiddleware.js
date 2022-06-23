@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
+const User = require("../models/userModel");
 
 const authenticateUser = asyncHandler(async (req, res, next) => {
-  const publicUrls = ["/sendOtp", "/verifyOtp", "/refresh"];
+  const publicUrls = ["/auth/sendOtp", "/auth/verifyOtp", "/auth/refresh"];
 
   const url = req.url;
 
@@ -25,15 +26,19 @@ const authenticateUser = asyncHandler(async (req, res, next) => {
         jwt.verify(
           accessToken,
           process.env.JWT_AUTH_TOKEN,
-          async (err, phone) => {
-            if (phone) {
-              req.phone = phone.data;
+          async (err, decodedData) => {
+            if (decodedData) {
+              const email = decodedData.data;
+              req.user = await User.findOne({ email: email });
+              // console.log(phone);
               next();
             } else if (err.name === "TokenExpiredError") {
-              return res
-                .status(403)
-                .send({ success: false, data: `Access Token Expired!!` });
+              return res.status(403).send({
+                success: false,
+                data: `Access Token Expired!! Please Login Again..`,
+              });
             } else {
+              // console.log("error....");
               console.error(err);
               res.status(403).send({ err, data: `User not Authenticated!!` });
             }
@@ -47,5 +52,3 @@ const authenticateUser = asyncHandler(async (req, res, next) => {
 });
 
 module.exports = { authenticateUser };
-
-// jmeter - stress measuring tool

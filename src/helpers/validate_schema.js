@@ -4,12 +4,12 @@ const caller = require("./caller");
 
 const authSchema = joi.object({
   name: joi.string().allow(null, ""),
-  email: joi.string().allow(null, ""),
+  email: joi.string().required(),
   phone: joi
     .string()
     .regex(/\+91[0-9]{10}$/)
     .messages({ "string.pattern.base": `Phone number must have 10 digits.` })
-    .required(),
+    .allow(null, "+91"),
   isLogin: joi.boolean(),
 });
 

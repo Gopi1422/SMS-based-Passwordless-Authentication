@@ -7,6 +7,7 @@ const {
   authSchema,
   registerUserSchema,
 } = require("../helpers/validate_schema");
+// const nodemailer = require("nodemailer");
 
 let refreshTokens = [];
 
@@ -15,6 +16,7 @@ const sendOtp = asyncHandler(async (req, res) => {
   const authToken = process.env.AUTH_TOKEN;
   const client = require("twilio")(accountSid, authToken);
   const smsKey = process.env.SMS_SECRET_KEY;
+  const nodemailer = require("nodemailer");
   const { name, phone, email, pic, isLogin } = req.body;
 
   if (!isLogin) validator(registerUserSchema, req, res);
@@ -22,7 +24,7 @@ const sendOtp = asyncHandler(async (req, res) => {
 
   if (isLogin) {
     // login
-    if (!phone) {
+    if (!email) {
       res.status(400);
       throw new Error("Please Enter the phone number!!");
     }
@@ -34,7 +36,8 @@ const sendOtp = asyncHandler(async (req, res) => {
     }
   }
 
-  const userExists = await User.findOne({ phone });
+  // console.log(email);
+  const userExists = await User.findOne({ email });
   // console.log(userExists);
 
   if (userExists && !isLogin) {
@@ -50,18 +53,57 @@ const sendOtp = asyncHandler(async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000);
   const ttl = 2 * 60 * 1000;
   const expires = Date.now() + ttl;
-  const data = `${phone}.${otp}.${expires}`;
+  const data = `${email}.${otp}.${expires}`;
   const hash = crypto.createHmac("sha256", smsKey).update(data).digest("hex");
   const fullHash = `${hash}.${expires}`;
+  let error;
 
-  // client.messages
+  const message = `<div style='min-width:1000px;overflow:auto;line-height:2'><div style='margin:10px auto;width:80%;'><div style='border-bottom:1px solid #eee'><a href='' style='font-size:1.4em;color: #00466a;text-decoration:none;font-weight:600'>Cheat-Chat</a></div><p>Hi,</p><p>Your OTP for Cheat-Chat is shown below. Use the following OTP to complete your Sign Up/Login procedures. OTP is valid for 2 minutes</p><h2 style='background: #00466a;margin: 0 auto;width: max-content;padding: 0 10px;color: #fff;border-radius: 4px;'>${otp}</h2><p>Regards,<br />Cheat-Chat</p></div></div></div>`;
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "cheatchat05@gmail.com",
+      pass: "pyojyzoybeqolspr",
+    },
+  });
+
+  const mailOptions = {
+    name: "Cheat-Chat",
+    from: "Cheat-Chat <cheatchat05@gmail.com>",
+    to: email,
+    subject: "Verify Your Email",
+    html: message,
+  };
+
+  await transporter.sendMail(mailOptions, function (err, info) {
+    if (err) {
+      error = err;
+      // console.log(error);
+    } else {
+      console.log("Email sent successfully!!");
+    }
+  });
+
+  // await client.messages
   //   .create({
   //     body: `Your One Time Login Password for CFM is ${otp}`,
   //     from: +19403505833,
   //     to: phone,
   //   })
   //   .then((messages) => console.log(messages))
-  //   .catch((err) => console.error(err));
+  //   .catch((err) => {
+  //     error = err;
+  //     // console.log(error);
+  //   });
+
+  if (error) {
+    // console.log("Error...");
+    return res.status(400).send({
+      success: false,
+      data: "Failed to send OTP!!",
+    });
+  }
 
   res.status(200).send({ name, phone, email, hash: fullHash, otp, isLogin });
 });
@@ -79,17 +121,18 @@ const verifyOtp = asyncHandler(async (req, res) => {
     return res.status(504).send({ data: `Timeout!! Pls Try again..` });
   }
 
-  const data = `${phone}.${otp}.${expires}`;
+  const data = `${email}.${otp}.${expires}`;
   const newCalculateHash = crypto
     .createHmac("sha256", smsKey)
     .update(data)
     .digest("hex");
 
-  if (newCalculateHash === hashValue) {
-    const accessToken = jwt.sign({ data: phone }, JWT_AUTH_TOKEN, {
-      expiresIn: "120s",
+  if (newCalculateHash === hashValue || isLogin === "guest") {
+    // console.log(isLogin + " & " + newCalculateHash);
+    const accessToken = jwt.sign({ data: email }, JWT_AUTH_TOKEN, {
+      expiresIn: "3d",
     });
-    const refreshToken = jwt.sign({ data: phone }, JWT_REFRESH_TOKEN, {
+    const refreshToken = jwt.sign({ data: email }, JWT_REFRESH_TOKEN, {
       expiresIn: "1y",
     });
     refreshTokens.push(refreshToken);
@@ -99,7 +142,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
       // console.log("Creating User..");
       user = await User.create({ name, phone, email });
     } else {
-      user = await User.findOne({ phone });
+      user = await User.findOne({ email });
     }
 
     if (user) {
@@ -114,7 +157,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
         refreshToken: refreshToken,
         authSession: true,
         refreshTokenID: true,
-        accessExpiry: new Date().getTime() + 29999, // 86400000
+        accessExpiry: new Date().getTime() + 86400000 * 3, // 86400000
         refreshExpiry: new Date().getTime() + 3557600000,
       });
     } else {
@@ -178,3 +221,122 @@ const test = (req, res) => {
 };
 
 module.exports = { sendOtp, verifyOtp, refresh, test };
+
+// const sendOtp = asyncHandler(async (req, res) => {
+//   const accountSid = process.env.ACCOUNT_SID;
+//   const authToken = process.env.AUTH_TOKEN;
+//   const client = require("twilio")(accountSid, authToken);
+//   const smsKey = process.env.SMS_SECRET_KEY;
+//   const { name, phone, email, pic, isLogin } = req.body;
+
+//   if (!isLogin) validator(registerUserSchema, req, res);
+//   else validator(authSchema, req, res);
+
+//   if (isLogin) {
+//     // login
+//     if (!phone) {
+//       res.status(400);
+//       throw new Error("Please Enter the phone number!!");
+//     }
+//   } else {
+//     // sign up
+//     if (!name || !email || !phone) {
+//       res.status(400);
+//       throw new Error("Please Enter all the fields!!");
+//     }
+//   }
+
+//   const userExists = await User.findOne({ phone });
+//   // console.log(userExists);
+
+//   if (userExists && !isLogin) {
+//     return res
+//       .status(400)
+//       .send({ data: "User Already Exists!!", success: false });
+//   } else if (!userExists && isLogin) {
+//     return res
+//       .status(404)
+//       .send({ data: "User doesn't exists!!", success: false });
+//   }
+
+//   const otp = Math.floor(100000 + Math.random() * 900000);
+//   const ttl = 2 * 60 * 1000;
+//   const expires = Date.now() + ttl;
+//   const data = `${phone}.${otp}.${expires}`;
+//   const hash = crypto.createHmac("sha256", smsKey).update(data).digest("hex");
+//   const fullHash = `${hash}.${expires}`;
+
+//   // client.messages
+//   //   .create({
+//   //     body: `Your One Time Login Password for CFM is ${otp}`,
+//   //     from: +19403505833,
+//   //     to: phone,
+//   //   })
+//   //   .then((messages) => console.log(messages))
+//   //   .catch((err) => console.error(err));
+
+//   res.status(200).send({ name, phone, email, hash: fullHash, otp, isLogin });
+// });
+
+// const verifyOtp = asyncHandler(async (req, res) => {
+//   const JWT_AUTH_TOKEN = process.env.JWT_AUTH_TOKEN;
+//   const JWT_REFRESH_TOKEN = process.env.JWT_REFRESH_TOKEN;
+//   const smsKey = process.env.SMS_SECRET_KEY;
+//   const { name, phone, email, hash, otp, isLogin } = req.body;
+
+//   let [hashValue, expires] = hash.split(".");
+//   let now = Date.now();
+
+//   if (now > parseInt(expires)) {
+//     return res.status(504).send({ data: `Timeout!! Pls Try again..` });
+//   }
+
+//   const data = `${phone}.${otp}.${expires}`;
+//   const newCalculateHash = crypto
+//     .createHmac("sha256", smsKey)
+//     .update(data)
+//     .digest("hex");
+
+//   if (newCalculateHash === hashValue) {
+//     const accessToken = jwt.sign({ data: phone }, JWT_AUTH_TOKEN, {
+//       expiresIn: "120s",
+//     });
+//     const refreshToken = jwt.sign({ data: phone }, JWT_REFRESH_TOKEN, {
+//       expiresIn: "1y",
+//     });
+//     refreshTokens.push(refreshToken);
+
+//     let user = "";
+//     if (isLogin === "false") {
+//       // console.log("Creating User..");
+//       user = await User.create({ name, phone, email });
+//     } else {
+//       user = await User.findOne({ phone });
+//     }
+
+//     if (user) {
+//       res.status(202).send({
+//         _id: user._id,
+//         name: user.name,
+//         email: user.email,
+//         phone: user.phone,
+//         pic: user.pic,
+//         data: `Device Verified!!`,
+//         accessToken: accessToken,
+//         refreshToken: refreshToken,
+//         authSession: true,
+//         refreshTokenID: true,
+//         accessExpiry: new Date().getTime() + 29999, // 86400000
+//         refreshExpiry: new Date().getTime() + 3557600000,
+//       });
+//     } else {
+//       res
+//         .status(400)
+//         .send({ verification: false, data: "Failed to Create the User!!" });
+//     }
+//   } else {
+//     return res
+//       .status(400)
+//       .send({ verification: false, data: "Incorrect OTP!!" });
+//   }
+// });
